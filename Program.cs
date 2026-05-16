@@ -11,15 +11,15 @@ app.MapGet("/", () => Results.Ok(new
     Application = "YARP minimal gateway example",
     Routes = new[]
     {
-        "/todos/{**catch-all} -> JSONPlaceholder Todos API",
-        "/posts/{**catch-all} -> JSONPlaceholder Posts API",
-        "/users/{**catch-all} -> JSONPlaceholder Users API"
+        "/todos/{**catch-all} -> JSONPlaceholder",
+        "/dogs/random -> Dog CEO",
+        "/countries/{**catch-all} -> REST Countries"
     },
     Examples = new[]
     {
         "/todos/1",
-        "/posts/1",
-        "/users/1"
+        "/dogs/random",
+        "/countries/name/brazil"
     }
 }));
 
