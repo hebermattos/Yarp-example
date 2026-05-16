@@ -4,7 +4,7 @@ Minimal **ASP.NET Core 8** example using **YARP** (*Yet Another Reverse Proxy*) 
 
 The goal of this project is to show how an ASP.NET Core application can receive requests on local routes and forward those requests to external APIs, so the client does not need to know the real upstream destinations.
 
-In addition to YARP, this project also includes **Serilog** for structured logging.
+In addition to YARP, this project also includes **Serilog** for structured logging, **rate limiting**, and **output caching**.
 
 ## What this example demonstrates
 
@@ -18,6 +18,8 @@ This project demonstrates:
 - How to configure Serilog in ASP.NET Core.
 - How to log to the console when the project is built in `DEBUG` mode.
 - How to write logs to files in the `Development` and `Production` environments.
+- How to apply a fixed-window rate limiter to proxied routes.
+- How to cache proxied responses for a short period.
 
 ## Public APIs used
 
@@ -142,10 +144,134 @@ This does two important things:
 Then the proxy is mapped into the HTTP pipeline:
 
 ```csharp
-app.MapReverseProxy();
+app.MapReverseProxy()
+    .RequireRateLimiting("fixed-window")
+    .CacheOutput("short-cache");
 ```
 
-This makes requests matching the configured routes handled by YARP.
+This makes requests matching the configured routes handled by YARP, while also applying rate limiting and output caching.
+
+## How rate limiting is configured
+
+The project uses ASP.NET Core rate limiting with a fixed-window policy:
+
+```csharp
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddFixedWindowLimiter("fixed-window", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 5;
+        limiterOptions.Window = TimeSpan.FromSeconds(10);
+        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        limiterOptions.QueueLimit = 0;
+    });
+});
+```
+
+The current rule is:
+
+| Policy | Value |
+|---|---|
+| Policy name | `fixed-window` |
+| Limit | 5 requests |
+| Window | 10 seconds |
+| Queue | Disabled |
+| Rejection status | `429 Too Many Requests` |
+
+The middleware is enabled with:
+
+```csharp
+app.UseRateLimiter();
+```
+
+The policy is applied to the reverse proxy endpoint:
+
+```csharp
+app.MapReverseProxy()
+    .RequireRateLimiting("fixed-window");
+```
+
+### Testing rate limiting
+
+Run several requests quickly:
+
+```bash
+for i in {1..10}; do curl -i http://localhost:5000/todos/1; echo; done
+```
+
+After 5 requests within 10 seconds, the gateway should start returning:
+
+```text
+HTTP/1.1 429 Too Many Requests
+```
+
+The custom rejection response is JSON:
+
+```json
+{
+  "error": "Too many requests.",
+  "detail": "The fixed-window rate limit was exceeded. Try again later."
+}
+```
+
+## How output caching is configured
+
+The project uses ASP.NET Core output caching with a short cache policy:
+
+```csharp
+builder.Services.AddOutputCache(options =>
+{
+    options.AddPolicy("short-cache", policyBuilder =>
+    {
+        policyBuilder
+            .Expire(TimeSpan.FromSeconds(30))
+            .SetVaryByQuery("*");
+    });
+});
+```
+
+The current rule is:
+
+| Policy | Value |
+|---|---|
+| Policy name | `short-cache` |
+| Duration | 30 seconds |
+| Query string variation | All query string values |
+
+The middleware is enabled with:
+
+```csharp
+app.UseOutputCache();
+```
+
+The policy is applied to the reverse proxy endpoint:
+
+```csharp
+app.MapReverseProxy()
+    .CacheOutput("short-cache");
+```
+
+### Testing output caching
+
+Call the same endpoint multiple times within 30 seconds:
+
+```bash
+curl -i http://localhost:5000/todos/1
+curl -i http://localhost:5000/todos/1
+```
+
+The second call may be served from the gateway cache instead of calling the upstream API again, depending on whether the response is cacheable according to ASP.NET Core output caching rules.
+
+For an endpoint with changing upstream content, try:
+
+```bash
+curl -i http://localhost:5000/dogs/random
+curl -i http://localhost:5000/dogs/random
+```
+
+Within the cache window, repeated calls can return the cached response.
 
 ## How Serilog is configured
 
@@ -365,6 +491,10 @@ GET http://localhost:5000/countries/name/brazil
   ↓
 ASP.NET Core receives the request
   ↓
+Rate limiter checks the request
+  ↓
+Output cache checks for a cached response
+  ↓
 YARP matches the countries-route route
   ↓
 YARP applies the PathPattern transform
@@ -372,6 +502,8 @@ YARP applies the PathPattern transform
 YARP forwards the request to https://restcountries.com/v3.1/name/brazil
   ↓
 The response returns through YARP
+  ↓
+Output cache stores the response when it is cacheable
   ↓
 The client receives the response
 ```
@@ -407,7 +539,7 @@ Contains the package references used by the project:
 
 ### `Program.cs`
 
-Configures the ASP.NET Core application, registers Serilog, registers YARP, and maps the reverse proxy.
+Configures the ASP.NET Core application, registers Serilog, registers rate limiting, registers output caching, registers YARP, and maps the reverse proxy.
 
 ### `appsettings.json`
 
@@ -461,11 +593,11 @@ YARP is useful when you need a .NET gateway for scenarios such as:
 - Reverse proxy for internal APIs.
 - Centralized routing.
 - Gradual migration between legacy systems and new services.
-- Applying authentication, authorization, headers, rate limiting, or observability in a single place.
+- Applying authentication, authorization, headers, rate limiting, caching, or observability in a single place.
 - Load balancing between multiple destinations.
 
 ## Notes
 
-This project is intentionally simple. It does not implement authentication, rate limiting, caching, health checks, or advanced observability.
+This project is intentionally simple. It does not implement authentication, distributed rate limiting, distributed caching, health checks, or advanced observability.
 
-The goal is to provide a starting point for understanding the basic YARP configuration in an ASP.NET Core application with Serilog.
+The goal is to provide a starting point for understanding the basic YARP configuration in an ASP.NET Core application with Serilog, rate limiting, and output caching.
