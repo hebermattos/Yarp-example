@@ -1,132 +1,132 @@
 # YARP Example
 
-Exemplo mínimo de **ASP.NET Core 8** usando **YARP** (*Yet Another Reverse Proxy*) para criar um gateway/reverse proxy.
+Minimal **ASP.NET Core 8** example using **YARP** (*Yet Another Reverse Proxy*) to create a gateway/reverse proxy.
 
-A ideia do projeto é mostrar como uma aplicação ASP.NET Core pode receber chamadas em rotas locais e encaminhar essas chamadas para APIs externas, sem que o cliente precise conhecer diretamente os destinos reais.
+The goal of this project is to show how an ASP.NET Core application can receive requests on local routes and forward those requests to external APIs, so the client does not need to know the real upstream destinations.
 
-Além do YARP, o projeto também inclui **Serilog** para logging estruturado.
+In addition to YARP, this project also includes **Serilog** for structured logging.
 
-## O que este exemplo demonstra
+## What this example demonstrates
 
-Este projeto demonstra:
+This project demonstrates:
 
-- Como instalar e registrar o pacote `Yarp.ReverseProxy`.
-- Como configurar rotas de proxy via `appsettings.json`.
-- Como apontar rotas locais para APIs públicas diferentes.
-- Como usar `Routes`, `Clusters`, `Destinations` e `Transforms`.
-- Como expor uma aplicação simples funcionando como API Gateway.
-- Como configurar Serilog no ASP.NET Core.
-- Como logar no console em build `DEBUG`.
-- Como gravar logs em arquivo nos ambientes `Development` e `Production`.
+- How to install and register the `Yarp.ReverseProxy` package.
+- How to configure proxy routes through `appsettings.json`.
+- How to map local routes to different public APIs.
+- How to use `Routes`, `Clusters`, `Destinations`, and `Transforms`.
+- How to expose a simple ASP.NET Core application as an API Gateway.
+- How to configure Serilog in ASP.NET Core.
+- How to log to the console when the project is built in `DEBUG` mode.
+- How to write logs to files in the `Development` and `Production` environments.
 
-## APIs públicas usadas
+## Public APIs used
 
-O gateway expõe três rotas locais e encaminha cada uma para uma API pública diferente:
+The gateway exposes three local routes and forwards each one to a different public API:
 
-| Rota local | API pública | Destino real |
+| Local route | Public API | Real destination |
 |---|---|---|
 | `/todos/{**catch-all}` | JSONPlaceholder | `https://jsonplaceholder.typicode.com/` |
 | `/dogs/random` | Dog CEO | `https://dog.ceo/api/breeds/image/random` |
 | `/countries/{**catch-all}` | REST Countries | `https://restcountries.com/v3.1/` |
 
-## Requisitos
+## Requirements
 
 - .NET 8 SDK
 - Git
-- Terminal, PowerShell, Bash ou similar
+- Terminal, PowerShell, Bash, or similar shell
 
-## Como executar
+## How to run
 
-Clone o repositório:
+Clone the repository:
 
 ```bash
 git clone https://github.com/hebermattos/Yarp-example.git
 cd Yarp-example
 ```
 
-Restaure os pacotes:
+Restore the packages:
 
 ```bash
 dotnet restore
 ```
 
-Execute a aplicação:
+Run the application:
 
 ```bash
 dotnet run
 ```
 
-Ou force uma URL específica:
+Or force a specific URL:
 
 ```bash
 dotnet run --urls http://localhost:5000
 ```
 
-## Como testar
+## How to test
 
-Abra a rota raiz para ver um resumo das rotas disponíveis:
+Open the root endpoint to see a summary of the available routes:
 
 ```bash
 curl http://localhost:5000/
 ```
 
-Teste a API de todos:
+Test the todos API:
 
 ```bash
 curl http://localhost:5000/todos/1
 ```
 
-Essa chamada entra no gateway em:
+This request enters the gateway at:
 
 ```text
 http://localhost:5000/todos/1
 ```
 
-E o YARP encaminha para:
+YARP forwards it to:
 
 ```text
 https://jsonplaceholder.typicode.com/todos/1
 ```
 
-Teste a API de imagem aleatória de cachorro:
+Test the random dog image API:
 
 ```bash
 curl http://localhost:5000/dogs/random
 ```
 
-Essa chamada entra no gateway em:
+This request enters the gateway at:
 
 ```text
 http://localhost:5000/dogs/random
 ```
 
-E o YARP encaminha para:
+YARP forwards it to:
 
 ```text
 https://dog.ceo/api/breeds/image/random
 ```
 
-Teste a API de países:
+Test the countries API:
 
 ```bash
 curl http://localhost:5000/countries/name/brazil
 ```
 
-Essa chamada entra no gateway em:
+This request enters the gateway at:
 
 ```text
 http://localhost:5000/countries/name/brazil
 ```
 
-E o YARP encaminha para:
+YARP forwards it to:
 
 ```text
 https://restcountries.com/v3.1/name/brazil
 ```
 
-## Como o YARP está registrado
+## How YARP is registered
 
-No arquivo `Program.cs`, o YARP é registrado no container de DI da aplicação:
+In `Program.cs`, YARP is registered in the application's dependency injection container:
 
 ```csharp
 builder.Services
@@ -134,22 +134,22 @@ builder.Services
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 ```
 
-Esse trecho faz duas coisas importantes:
+This does two important things:
 
-1. `AddReverseProxy()` adiciona os serviços necessários do YARP.
-2. `LoadFromConfig(...)` diz ao YARP para ler a configuração da seção `ReverseProxy` no `appsettings.json`.
+1. `AddReverseProxy()` adds the services required by YARP.
+2. `LoadFromConfig(...)` tells YARP to read its configuration from the `ReverseProxy` section in `appsettings.json`.
 
-Depois, o proxy é mapeado no pipeline HTTP:
+Then the proxy is mapped into the HTTP pipeline:
 
 ```csharp
 app.MapReverseProxy();
 ```
 
-Isso faz com que as requisições compatíveis com as rotas configuradas sejam tratadas pelo YARP.
+This makes requests matching the configured routes handled by YARP.
 
-## Como o Serilog está configurado
+## How Serilog is configured
 
-O projeto usa Serilog no host do ASP.NET Core:
+The project uses Serilog at the ASP.NET Core host level:
 
 ```csharp
 builder.Host.UseSerilog((context, services, loggerConfiguration) =>
@@ -178,18 +178,18 @@ builder.Host.UseSerilog((context, services, loggerConfiguration) =>
 });
 ```
 
-### Regra aplicada
+### Applied logging rule
 
-| Condição | Saída de log |
+| Condition | Log output |
 |---|---|
-| Build `DEBUG` | Console |
-| Ambiente `Development` | Arquivo em `logs/` |
-| Ambiente `Production` | Arquivo em `logs/` |
-| Outros ambientes | Sem arquivo, a menos que também estejam em build `DEBUG` |
+| `DEBUG` build | Console |
+| `Development` environment | File under `logs/` |
+| `Production` environment | File under `logs/` |
+| Other environments | No file output unless also built in `DEBUG` mode |
 
-### Console somente em DEBUG
+### Console only in DEBUG
 
-O console é registrado dentro de uma diretiva de compilação:
+The console sink is registered inside a compilation directive:
 
 ```csharp
 #if DEBUG
@@ -197,11 +197,11 @@ O console é registrado dentro de uma diretiva de compilação:
 #endif
 ```
 
-Isso significa que o sink de console só entra no binário quando o projeto é compilado em modo `Debug`.
+This means the console sink is only included in the binary when the project is compiled in `Debug` mode.
 
-### Arquivo em Development e Production
+### File logging in Development and Production
 
-O sink de arquivo é ativado em tempo de execução quando o ambiente é `Development` ou `Production`:
+The file sink is enabled at runtime when the environment is `Development` or `Production`:
 
 ```csharp
 if (context.HostingEnvironment.IsDevelopment() || context.HostingEnvironment.IsProduction())
@@ -210,23 +210,23 @@ if (context.HostingEnvironment.IsDevelopment() || context.HostingEnvironment.IsP
 }
 ```
 
-Os arquivos são gerados em:
+Log files are generated under:
 
 ```text
 logs/yarp-example-YYYYMMDD.log
 ```
 
-A configuração usa:
+The configuration uses:
 
-- `rollingInterval: RollingInterval.Day`: cria um arquivo por dia.
-- `retainedFileCountLimit: 14`: mantém até 14 arquivos de log.
-- `restrictedToMinimumLevel: LogEventLevel.Information`: grava logs a partir de `Information`.
+- `rollingInterval: RollingInterval.Day`: creates one log file per day.
+- `retainedFileCountLimit: 14`: keeps up to 14 log files.
+- `restrictedToMinimumLevel: LogEventLevel.Information`: writes logs starting from `Information`.
 
-A pasta `logs/` foi adicionada ao `.gitignore` para evitar versionar arquivos de log.
+The `logs/` folder is included in `.gitignore` to avoid committing generated log files.
 
-### Log de requisições HTTP
+### HTTP request logging
 
-O projeto também usa:
+The project also uses:
 
 ```csharp
 app.UseSerilogRequestLogging(options =>
@@ -235,21 +235,21 @@ app.UseSerilogRequestLogging(options =>
 });
 ```
 
-Esse middleware gera logs estruturados para as requisições HTTP processadas pela aplicação, incluindo chamadas que passam pelo YARP.
+This middleware creates structured logs for HTTP requests processed by the application, including requests handled by YARP.
 
-Exemplo de informação registrada:
+Example log message:
 
 ```text
 HTTP GET /todos/1 responded 200 in 123.4567 ms
 ```
 
-## Conceitos principais do YARP
+## Core YARP concepts
 
 ### Route
 
-Uma `Route` define **qual requisição local será capturada** pelo gateway.
+A `Route` defines **which local request should be captured** by the gateway.
 
-Exemplo:
+Example:
 
 ```json
 "todos-route": {
@@ -260,9 +260,9 @@ Exemplo:
 }
 ```
 
-Neste caso, qualquer chamada que comece com `/todos/` será capturada por essa rota.
+In this case, any request starting with `/todos/` is captured by this route.
 
-Exemplo:
+Examples:
 
 ```text
 /todos/1
@@ -272,9 +272,9 @@ Exemplo:
 
 ### Cluster
 
-Um `Cluster` define **para onde a requisição será encaminhada**.
+A `Cluster` defines **where the request should be forwarded**.
 
-Exemplo:
+Example:
 
 ```json
 "jsonplaceholder-cluster": {
@@ -286,13 +286,13 @@ Exemplo:
 }
 ```
 
-A rota aponta para o cluster usando `ClusterId`:
+A route points to a cluster through `ClusterId`:
 
 ```json
 "ClusterId": "jsonplaceholder-cluster"
 ```
 
-Ou seja:
+The flow is:
 
 ```text
 Route -> Cluster -> Destination
@@ -300,21 +300,21 @@ Route -> Cluster -> Destination
 
 ### Destination
 
-Uma `Destination` é o endereço final para onde o YARP envia a chamada.
+A `Destination` is the final upstream address where YARP sends the request.
 
-Exemplo:
+Example:
 
 ```json
 "Address": "https://jsonplaceholder.typicode.com/"
 ```
 
-Um cluster pode ter uma ou mais destinations. Em cenários reais, isso permite balanceamento de carga entre múltiplas instâncias de uma API.
+A cluster can have one or more destinations. In real-world scenarios, this allows load balancing between multiple instances of the same API.
 
 ### Transform
 
-Um `Transform` permite alterar partes da requisição antes de enviá-la ao destino.
+A `Transform` allows changing parts of the request before forwarding it to the upstream destination.
 
-Neste exemplo, a rota local `/dogs/random` é convertida para o caminho real da API Dog CEO:
+In this example, the local `/dogs/random` route is converted to the real Dog CEO API path:
 
 ```json
 "Transforms": [
@@ -324,59 +324,59 @@ Neste exemplo, a rota local `/dogs/random` é convertida para o caminho real da 
 ]
 ```
 
-Assim, o cliente chama:
+So the client calls:
 
 ```text
 /dogs/random
 ```
 
-Mas o destino recebe:
+But the upstream destination receives:
 
 ```text
 /api/breeds/image/random
 ```
 
-Também usamos `PathPattern` para preservar parte da rota capturada:
+The example also uses `PathPattern` to preserve part of the captured route:
 
 ```json
 "PathPattern": "/v3.1/{**catch-all}"
 ```
 
-Com isso:
+With this transform:
 
 ```text
 /countries/name/brazil
 ```
 
-Vira:
+becomes:
 
 ```text
 /v3.1/name/brazil
 ```
 
-## Fluxo de uma requisição
+## Request flow
 
-Exemplo usando `/countries/name/brazil`:
+Example using `/countries/name/brazil`:
 
 ```text
-Cliente
+Client
   ↓
 GET http://localhost:5000/countries/name/brazil
   ↓
-ASP.NET Core recebe a requisição
+ASP.NET Core receives the request
   ↓
-YARP identifica a rota countries-route
+YARP matches the countries-route route
   ↓
-YARP aplica o transform PathPattern
+YARP applies the PathPattern transform
   ↓
-YARP encaminha para https://restcountries.com/v3.1/name/brazil
+YARP forwards the request to https://restcountries.com/v3.1/name/brazil
   ↓
-A resposta volta pelo YARP
+The response returns through YARP
   ↓
-Cliente recebe a resposta
+The client receives the response
 ```
 
-## Estrutura do projeto
+## Project structure
 
 ```text
 .
@@ -392,11 +392,11 @@ Cliente recebe a resposta
 └── appsettings.json
 ```
 
-## Arquivos principais
+## Main files
 
 ### `YarpExample.csproj`
 
-Contém as referências dos pacotes usados pelo projeto:
+Contains the package references used by the project:
 
 ```xml
 <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
@@ -407,25 +407,25 @@ Contém as referências dos pacotes usados pelo projeto:
 
 ### `Program.cs`
 
-Configura a aplicação ASP.NET Core, registra o Serilog, registra o YARP e mapeia o reverse proxy.
+Configures the ASP.NET Core application, registers Serilog, registers YARP, and maps the reverse proxy.
 
 ### `appsettings.json`
 
-Contém toda a configuração de rotas, clusters, destinos e transforms.
+Contains all route, cluster, destination, and transform configuration.
 
 ### `.github/workflows/build.yml`
 
-Workflow simples do GitHub Actions para restaurar e compilar o projeto em cada push ou pull request para a branch `main`.
+Simple GitHub Actions workflow that restores and builds the project on each push or pull request targeting the `main` branch.
 
-## Como adicionar uma nova API
+## How to add a new API
 
-Para adicionar uma nova API, você precisa criar:
+To add a new API, create:
 
-1. Uma nova rota em `ReverseProxy:Routes`.
-2. Um novo cluster em `ReverseProxy:Clusters`.
-3. Uma destination apontando para a API real.
+1. A new route under `ReverseProxy:Routes`.
+2. A new cluster under `ReverseProxy:Clusters`.
+3. A destination pointing to the real API.
 
-Exemplo conceitual:
+Conceptual example:
 
 ```json
 "my-api-route": {
@@ -441,7 +441,7 @@ Exemplo conceitual:
 }
 ```
 
-E o cluster:
+And the cluster:
 
 ```json
 "my-api-cluster": {
@@ -453,19 +453,19 @@ E o cluster:
 }
 ```
 
-## Quando usar YARP
+## When to use YARP
 
-YARP é útil quando você precisa de um gateway em .NET para cenários como:
+YARP is useful when you need a .NET gateway for scenarios such as:
 
-- API Gateway para múltiplos serviços.
-- Reverse proxy para APIs internas.
-- Roteamento centralizado.
-- Migração gradual entre sistemas legados e novos serviços.
-- Aplicação de autenticação, autorização, headers, rate limiting ou observabilidade em um ponto único.
-- Balanceamento entre múltiplos destinos.
+- API Gateway for multiple services.
+- Reverse proxy for internal APIs.
+- Centralized routing.
+- Gradual migration between legacy systems and new services.
+- Applying authentication, authorization, headers, rate limiting, or observability in a single place.
+- Load balancing between multiple destinations.
 
-## Observações
+## Notes
 
-Este projeto é propositalmente simples. Ele não implementa autenticação, rate limiting, cache, health checks ou observabilidade avançada.
+This project is intentionally simple. It does not implement authentication, rate limiting, caching, health checks, or advanced observability.
 
-A intenção é servir como ponto de partida para entender a configuração básica do YARP em uma aplicação ASP.NET Core com Serilog.
+The goal is to provide a starting point for understanding the basic YARP configuration in an ASP.NET Core application with Serilog.
