@@ -2,28 +2,37 @@
 
 Minimal **ASP.NET Core 8** example using **YARP** (*Yet Another Reverse Proxy*) to create a gateway/reverse proxy.
 
-The goal of this project is to show how an ASP.NET Core application can receive requests on local routes and forward those requests to external APIs, so the client does not need to know the real upstream destinations.
+The project shows how an ASP.NET Core application can receive requests on local routes and forward those requests to external APIs. It also includes **Serilog**, **rate limiting**, and **output caching**.
 
-In addition to YARP, this project also includes **Serilog** for structured logging, **rate limiting**, and **output caching**.
+## Features
 
-## What this example demonstrates
+- ASP.NET Core 8 minimal API
+- YARP reverse proxy
+- Three public upstream APIs
+- Request path transforms
+- Serilog structured logging
+- Console logging in `DEBUG` builds
+- File logging in `Development` and `Production`
+- Fixed-window rate limiting
+- Short output cache policy
+- GitHub Actions build workflow
 
-This project demonstrates:
+## Quick start
 
-- How to install and register the `Yarp.ReverseProxy` package.
-- How to configure proxy routes through `appsettings.json`.
-- How to map local routes to different public APIs.
-- How to use `Routes`, `Clusters`, `Destinations`, and `Transforms`.
-- How to expose a simple ASP.NET Core application as an API Gateway.
-- How to configure Serilog in ASP.NET Core.
-- How to log to the console when the project is built in `DEBUG` mode.
-- How to write logs to files in the `Development` and `Production` environments.
-- How to apply a fixed-window rate limiter to proxied routes.
-- How to cache proxied responses for a short period.
+```bash
+git clone https://github.com/hebermattos/Yarp-example.git
+cd Yarp-example
+dotnet restore
+dotnet run --urls http://localhost:5000
+```
+
+Open the root endpoint:
+
+```bash
+curl http://localhost:5000/
+```
 
 ## Public APIs used
-
-The gateway exposes three local routes and forwards each one to a different public API:
 
 | Local route | Public API | Real destination |
 |---|---|---|
@@ -31,482 +40,28 @@ The gateway exposes three local routes and forwards each one to a different publ
 | `/dogs/random` | Dog CEO | `https://dog.ceo/api/breeds/image/random` |
 | `/countries/{**catch-all}` | REST Countries | `https://restcountries.com/v3.1/` |
 
-## Requirements
-
-- .NET 8 SDK
-- Git
-- Terminal, PowerShell, Bash, or similar shell
-
-## How to run
-
-Clone the repository:
-
-```bash
-git clone https://github.com/hebermattos/Yarp-example.git
-cd Yarp-example
-```
-
-Restore the packages:
-
-```bash
-dotnet restore
-```
-
-Run the application:
-
-```bash
-dotnet run
-```
-
-Or force a specific URL:
-
-```bash
-dotnet run --urls http://localhost:5000
-```
-
-## How to test
-
-Open the root endpoint to see a summary of the available routes:
-
-```bash
-curl http://localhost:5000/
-```
-
-Test the todos API:
+## Test requests
 
 ```bash
 curl http://localhost:5000/todos/1
-```
-
-This request enters the gateway at:
-
-```text
-http://localhost:5000/todos/1
-```
-
-YARP forwards it to:
-
-```text
-https://jsonplaceholder.typicode.com/todos/1
-```
-
-Test the random dog image API:
-
-```bash
 curl http://localhost:5000/dogs/random
-```
-
-This request enters the gateway at:
-
-```text
-http://localhost:5000/dogs/random
-```
-
-YARP forwards it to:
-
-```text
-https://dog.ceo/api/breeds/image/random
-```
-
-Test the countries API:
-
-```bash
 curl http://localhost:5000/countries/name/brazil
 ```
 
-This request enters the gateway at:
+## Policies
 
-```text
-http://localhost:5000/countries/name/brazil
-```
-
-YARP forwards it to:
-
-```text
-https://restcountries.com/v3.1/name/brazil
-```
-
-## How YARP is registered
-
-In `Program.cs`, YARP is registered in the application's dependency injection container:
-
-```csharp
-builder.Services
-    .AddReverseProxy()
-    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
-```
-
-This does two important things:
-
-1. `AddReverseProxy()` adds the services required by YARP.
-2. `LoadFromConfig(...)` tells YARP to read its configuration from the `ReverseProxy` section in `appsettings.json`.
-
-Then the proxy is mapped into the HTTP pipeline:
-
-```csharp
-app.MapReverseProxy()
-    .RequireRateLimiting("fixed-window")
-    .CacheOutput("short-cache");
-```
-
-This makes requests matching the configured routes handled by YARP, while also applying rate limiting and output caching.
-
-## How rate limiting is configured
-
-The project uses ASP.NET Core rate limiting with a fixed-window policy:
-
-```csharp
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-
-    options.AddFixedWindowLimiter("fixed-window", limiterOptions =>
-    {
-        limiterOptions.PermitLimit = 5;
-        limiterOptions.Window = TimeSpan.FromSeconds(10);
-        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        limiterOptions.QueueLimit = 0;
-    });
-});
-```
-
-The current rule is:
-
-| Policy | Value |
+| Policy | Current configuration |
 |---|---|
-| Policy name | `fixed-window` |
-| Limit | 5 requests |
-| Window | 10 seconds |
-| Queue | Disabled |
-| Rejection status | `429 Too Many Requests` |
-
-The middleware is enabled with:
-
-```csharp
-app.UseRateLimiter();
-```
-
-The policy is applied to the reverse proxy endpoint:
-
-```csharp
-app.MapReverseProxy()
-    .RequireRateLimiting("fixed-window");
-```
-
-### Testing rate limiting
-
-Run several requests quickly:
-
-```bash
-for i in {1..10}; do curl -i http://localhost:5000/todos/1; echo; done
-```
-
-After 5 requests within 10 seconds, the gateway should start returning:
-
-```text
-HTTP/1.1 429 Too Many Requests
-```
-
-The custom rejection response is JSON:
-
-```json
-{
-  "error": "Too many requests.",
-  "detail": "The fixed-window rate limit was exceeded. Try again later."
-}
-```
-
-## How output caching is configured
-
-The project uses ASP.NET Core output caching with a short cache policy:
-
-```csharp
-builder.Services.AddOutputCache(options =>
-{
-    options.AddPolicy("short-cache", policyBuilder =>
-    {
-        policyBuilder
-            .Expire(TimeSpan.FromSeconds(30))
-            .SetVaryByQuery("*");
-    });
-});
-```
-
-The current rule is:
-
-| Policy | Value |
-|---|---|
-| Policy name | `short-cache` |
-| Duration | 30 seconds |
-| Query string variation | All query string values |
-
-The middleware is enabled with:
-
-```csharp
-app.UseOutputCache();
-```
-
-The policy is applied to the reverse proxy endpoint:
-
-```csharp
-app.MapReverseProxy()
-    .CacheOutput("short-cache");
-```
-
-### Testing output caching
-
-Call the same endpoint multiple times within 30 seconds:
-
-```bash
-curl -i http://localhost:5000/todos/1
-curl -i http://localhost:5000/todos/1
-```
-
-The second call may be served from the gateway cache instead of calling the upstream API again, depending on whether the response is cacheable according to ASP.NET Core output caching rules.
-
-For an endpoint with changing upstream content, try:
-
-```bash
-curl -i http://localhost:5000/dogs/random
-curl -i http://localhost:5000/dogs/random
-```
-
-Within the cache window, repeated calls can return the cached response.
-
-## How Serilog is configured
-
-The project uses Serilog at the ASP.NET Core host level:
-
-```csharp
-builder.Host.UseSerilog((context, services, loggerConfiguration) =>
-{
-    loggerConfiguration
-        .ReadFrom.Configuration(context.Configuration)
-        .ReadFrom.Services(services)
-        .Enrich.FromLogContext()
-        .MinimumLevel.Information()
-        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-        .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
-        .MinimumLevel.Override("Yarp.ReverseProxy", LogEventLevel.Information);
-
-#if DEBUG
-    loggerConfiguration.WriteTo.Console();
-#endif
-
-    if (context.HostingEnvironment.IsDevelopment() || context.HostingEnvironment.IsProduction())
-    {
-        loggerConfiguration.WriteTo.File(
-            path: "logs/yarp-example-.log",
-            rollingInterval: RollingInterval.Day,
-            retainedFileCountLimit: 14,
-            restrictedToMinimumLevel: LogEventLevel.Information);
-    }
-});
-```
-
-### Applied logging rule
-
-| Condition | Log output |
-|---|---|
-| `DEBUG` build | Console |
-| `Development` environment | File under `logs/` |
-| `Production` environment | File under `logs/` |
-| Other environments | No file output unless also built in `DEBUG` mode |
-
-### Console only in DEBUG
-
-The console sink is registered inside a compilation directive:
-
-```csharp
-#if DEBUG
-    loggerConfiguration.WriteTo.Console();
-#endif
-```
-
-This means the console sink is only included in the binary when the project is compiled in `Debug` mode.
-
-### File logging in Development and Production
-
-The file sink is enabled at runtime when the environment is `Development` or `Production`:
-
-```csharp
-if (context.HostingEnvironment.IsDevelopment() || context.HostingEnvironment.IsProduction())
-{
-    loggerConfiguration.WriteTo.File(...);
-}
-```
-
-Log files are generated under:
-
-```text
-logs/yarp-example-YYYYMMDD.log
-```
-
-The configuration uses:
-
-- `rollingInterval: RollingInterval.Day`: creates one log file per day.
-- `retainedFileCountLimit: 14`: keeps up to 14 log files.
-- `restrictedToMinimumLevel: LogEventLevel.Information`: writes logs starting from `Information`.
-
-The `logs/` folder is included in `.gitignore` to avoid committing generated log files.
-
-### HTTP request logging
-
-The project also uses:
-
-```csharp
-app.UseSerilogRequestLogging(options =>
-{
-    options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
-});
-```
-
-This middleware creates structured logs for HTTP requests processed by the application, including requests handled by YARP.
-
-Example log message:
-
-```text
-HTTP GET /todos/1 responded 200 in 123.4567 ms
-```
-
-## Core YARP concepts
-
-### Route
-
-A `Route` defines **which local request should be captured** by the gateway.
-
-Example:
-
-```json
-"todos-route": {
-  "ClusterId": "jsonplaceholder-cluster",
-  "Match": {
-    "Path": "/todos/{**catch-all}"
-  }
-}
-```
-
-In this case, any request starting with `/todos/` is captured by this route.
-
-Examples:
-
-```text
-/todos/1
-/todos/10
-/todos/99
-```
-
-### Cluster
-
-A `Cluster` defines **where the request should be forwarded**.
-
-Example:
-
-```json
-"jsonplaceholder-cluster": {
-  "Destinations": {
-    "destination1": {
-      "Address": "https://jsonplaceholder.typicode.com/"
-    }
-  }
-}
-```
-
-A route points to a cluster through `ClusterId`:
-
-```json
-"ClusterId": "jsonplaceholder-cluster"
-```
-
-The flow is:
-
-```text
-Route -> Cluster -> Destination
-```
-
-### Destination
-
-A `Destination` is the final upstream address where YARP sends the request.
-
-Example:
-
-```json
-"Address": "https://jsonplaceholder.typicode.com/"
-```
-
-A cluster can have one or more destinations. In real-world scenarios, this allows load balancing between multiple instances of the same API.
-
-### Transform
-
-A `Transform` allows changing parts of the request before forwarding it to the upstream destination.
-
-In this example, the local `/dogs/random` route is converted to the real Dog CEO API path:
-
-```json
-"Transforms": [
-  {
-    "PathSet": "/api/breeds/image/random"
-  }
-]
-```
-
-So the client calls:
-
-```text
-/dogs/random
-```
-
-But the upstream destination receives:
-
-```text
-/api/breeds/image/random
-```
-
-The example also uses `PathPattern` to preserve part of the captured route:
-
-```json
-"PathPattern": "/v3.1/{**catch-all}"
-```
-
-With this transform:
-
-```text
-/countries/name/brazil
-```
-
-becomes:
-
-```text
-/v3.1/name/brazil
-```
-
-## Request flow
-
-Example using `/countries/name/brazil`:
-
-```text
-Client
-  ↓
-GET http://localhost:5000/countries/name/brazil
-  ↓
-ASP.NET Core receives the request
-  ↓
-Rate limiter checks the request
-  ↓
-Output cache checks for a cached response
-  ↓
-YARP matches the countries-route route
-  ↓
-YARP applies the PathPattern transform
-  ↓
-YARP forwards the request to https://restcountries.com/v3.1/name/brazil
-  ↓
-The response returns through YARP
-  ↓
-Output cache stores the response when it is cacheable
-  ↓
-The client receives the response
-```
+| Rate limiting | 5 requests every 10 seconds, no queue |
+| Output caching | 30 seconds, varies by query string |
+| Logging | Console in `DEBUG`; file in `Development` and `Production` |
+
+## Documentation
+
+- [Getting started](docs/getting-started.md)
+- [YARP configuration](docs/yarp-configuration.md)
+- [Logging](docs/logging.md)
+- [Rate limiting and caching](docs/rate-limiting-and-caching.md)
 
 ## Project structure
 
@@ -517,6 +72,11 @@ The client receives the response
 │       └── build.yml
 ├── Properties/
 │   └── launchSettings.json
+├── docs/
+│   ├── getting-started.md
+│   ├── logging.md
+│   ├── rate-limiting-and-caching.md
+│   └── yarp-configuration.md
 ├── .gitignore
 ├── Program.cs
 ├── README.md
@@ -526,78 +86,15 @@ The client receives the response
 
 ## Main files
 
-### `YarpExample.csproj`
-
-Contains the package references used by the project:
-
-```xml
-<PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
-<PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
-<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-<PackageReference Include="Yarp.ReverseProxy" Version="2.3.0" />
-```
-
-### `Program.cs`
-
-Configures the ASP.NET Core application, registers Serilog, registers rate limiting, registers output caching, registers YARP, and maps the reverse proxy.
-
-### `appsettings.json`
-
-Contains all route, cluster, destination, and transform configuration.
-
-### `.github/workflows/build.yml`
-
-Simple GitHub Actions workflow that restores and builds the project on each push or pull request targeting the `main` branch.
-
-## How to add a new API
-
-To add a new API, create:
-
-1. A new route under `ReverseProxy:Routes`.
-2. A new cluster under `ReverseProxy:Clusters`.
-3. A destination pointing to the real API.
-
-Conceptual example:
-
-```json
-"my-api-route": {
-  "ClusterId": "my-api-cluster",
-  "Match": {
-    "Path": "/my-api/{**catch-all}"
-  },
-  "Transforms": [
-    {
-      "PathPattern": "/{**catch-all}"
-    }
-  ]
-}
-```
-
-And the cluster:
-
-```json
-"my-api-cluster": {
-  "Destinations": {
-    "destination1": {
-      "Address": "https://example.com/"
-    }
-  }
-}
-```
-
-## When to use YARP
-
-YARP is useful when you need a .NET gateway for scenarios such as:
-
-- API Gateway for multiple services.
-- Reverse proxy for internal APIs.
-- Centralized routing.
-- Gradual migration between legacy systems and new services.
-- Applying authentication, authorization, headers, rate limiting, caching, or observability in a single place.
-- Load balancing between multiple destinations.
+| File | Purpose |
+|---|---|
+| `Program.cs` | Configures ASP.NET Core, Serilog, rate limiting, output caching, and YARP. |
+| `appsettings.json` | Defines YARP routes, clusters, destinations, and transforms. |
+| `YarpExample.csproj` | Defines the target framework and package references. |
+| `.github/workflows/build.yml` | Restores and builds the project in GitHub Actions. |
 
 ## Notes
 
 This project is intentionally simple. It does not implement authentication, distributed rate limiting, distributed caching, health checks, or advanced observability.
 
-The goal is to provide a starting point for understanding the basic YARP configuration in an ASP.NET Core application with Serilog, rate limiting, and output caching.
+The goal is to provide a clean starting point for understanding YARP in an ASP.NET Core application.
