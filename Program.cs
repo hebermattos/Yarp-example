@@ -1,4 +1,9 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Events;
 
@@ -28,6 +33,33 @@ builder.Host.UseSerilog((context, services, loggerConfiguration) =>
             restrictedToMinimumLevel: LogEventLevel.Information);
     }
 });
+
+var jwtIssuer = builder.Configuration["Jwt:Issuer"]
+    ?? throw new InvalidOperationException("Jwt:Issuer is not configured.");
+var jwtAudience = builder.Configuration["Jwt:Audience"]
+    ?? throw new InvalidOperationException("Jwt:Audience is not configured.");
+var jwtSigningKey = builder.Configuration["Jwt:SigningKey"]
+    ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
+var jwtSecurityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSigningKey));
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = jwtAudience,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = jwtSecurityKey,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromSeconds(30)
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -76,6 +108,8 @@ app.UseSerilogRequestLogging(options =>
     options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
 });
 
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseRateLimiter();
 app.UseOutputCache();
 
@@ -87,6 +121,12 @@ app.MapGet("/", () => Results.Ok(new
         "/todos/{**catch-all} -> JSONPlaceholder",
         "/dogs/random -> Dog CEO",
         "/countries/{**catch-all} -> REST Countries"
+    },
+    Security = new
+    {
+        Authentication = "JWT Bearer",
+        TokenEndpoint = "/auth/token",
+        ProtectedProxyRoutes = true
     },
     Policies = new
     {
@@ -101,7 +141,45 @@ app.MapGet("/", () => Results.Ok(new
     }
 }));
 
+app.MapPost("/auth/token", (IConfiguration configuration) =>
+{
+    var issuer = configuration["Jwt:Issuer"]
+        ?? throw new InvalidOperationException("Jwt:Issuer is not configured.");
+    var audience = configuration["Jwt:Audience"]
+        ?? throw new InvalidOperationException("Jwt:Audience is not configured.");
+    var signingKey = configuration["Jwt:SigningKey"]
+        ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
+
+    var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey));
+    var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+    var expiresAt = DateTime.UtcNow.AddMinutes(30);
+
+    var claims = new[]
+    {
+        new Claim(JwtRegisteredClaimNames.Sub, "demo-user"),
+        new Claim(JwtRegisteredClaimNames.Name, "Demo User"),
+        new Claim("scope", "gateway.read")
+    };
+
+    var token = new JwtSecurityToken(
+        issuer: issuer,
+        audience: audience,
+        claims: claims,
+        expires: expiresAt,
+        signingCredentials: credentials);
+
+    var accessToken = new JwtSecurityTokenHandler().WriteToken(token);
+
+    return Results.Ok(new
+    {
+        AccessToken = accessToken,
+        TokenType = "Bearer",
+        ExpiresAtUtc = expiresAt
+    });
+});
+
 app.MapReverseProxy()
+    .RequireAuthorization()
     .RequireRateLimiting("fixed-window")
     .CacheOutput("short-cache");
 
