@@ -95,6 +95,18 @@ curl http://localhost:5000/countries/name/brazil
 
 ## Notes
 
-This project is intentionally simple. It does not implement authentication, distributed rate limiting, distributed caching, health checks, or advanced observability.
+This repository is intended as a small learning sample, not as a production-ready gateway template.
 
-The goal is to provide a clean starting point for understanding YARP in an ASP.NET Core application.
+The implementation intentionally keeps the configuration simple and local to the application so the main YARP concepts are easy to inspect: routes, clusters, destinations, transforms, logging, rate limiting, and output caching.
+
+Current limitations:
+
+- No authentication or authorization.
+- No distributed rate limiting.
+- No distributed cache provider.
+- No health checks for upstream destinations.
+- No retry, circuit breaker, or resiliency pipeline.
+- No OpenTelemetry or Application Insights integration.
+- No Dockerfile or deployment-specific configuration.
+
+For a production gateway, consider adding authentication, authorization policies, health checks, resiliency, distributed cache/rate limiting, centralized observability, secure configuration management, and environment-specific deployment settings.
